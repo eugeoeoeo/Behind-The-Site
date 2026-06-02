@@ -64,16 +64,7 @@ const ACHIEVEMENTS_LIST = [
 export const fetchUserProgress = async () => {
   const user = await getCurrentUser();
   if (!user) {
-    // Return standard guest progress if not logged in
-    return {
-      isGuest: true,
-      activeLessonId: "1.1",
-      completedLessons: [],
-      xp: 0,
-      streak: 0,
-      achievements: [],
-      achievementsList: ACHIEVEMENTS_LIST
-    };
+    throw new Error("Authentication required to retrieve progress.");
   }
 
   const { data, error } = await supabase
@@ -83,8 +74,7 @@ export const fetchUserProgress = async () => {
     .single();
 
   if (error) {
-    console.error("Profile not found or fetch error. Auto-creating fallback row.", error);
-    // Profile might not have finished seeding yet, return stubs
+    console.warn("Profile record not found. Returning fresh seed stub.", error);
     return {
       activeLessonId: "1.1",
       completedLessons: [],
@@ -108,8 +98,7 @@ export const fetchUserProgress = async () => {
 export const saveUserProgress = async (progress) => {
   const user = await getCurrentUser();
   if (!user) {
-    // If guest user, keep in memory/do not throw to block experience
-    return { success: true, isGuest: true };
+    throw new Error("Authentication required to save progress.");
   }
 
   const { error } = await supabase
@@ -133,7 +122,7 @@ export const saveUserProgress = async (progress) => {
 
 export const resetUserProgress = async () => {
   const user = await getCurrentUser();
-  if (!user) return { success: true, isGuest: true };
+  if (!user) throw new Error("Authentication required to reset progress.");
 
   const { error } = await supabase
     .from("profiles")
@@ -157,7 +146,6 @@ export const resetUserProgress = async () => {
 
 // 3. SECURE AI TUTOR FEEDBACK ENGINE
 export const queryAITutor = async (userCode, lesson) => {
-  // Simulates Gemini secure endpoint responses based on student solutions
   await new Promise((r) => setTimeout(r, 600));
   const codeLower = userCode.toLowerCase();
 

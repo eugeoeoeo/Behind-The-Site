@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { CHAPTERS } from "../data/courseData";
-import { fetchUserProgress, saveUserProgress, resetUserProgress, queryAITutor, logoutUser } from "../services/apiService";
+import { fetchUserProgress, saveUserProgress, resetUserProgress, queryAITutor, logoutUser, loginUser, signupUser } from "../services/apiService";
 import { supabase } from "../services/supabaseClient";
 import FolderSandbox from "./editor/FolderSandbox";
 import TerminalConsole from "./simulator/TerminalConsole";
-import AuthModal from "./auth/AuthModal";
 
 export default function Dashboard() {
   // Progress & Session states
@@ -13,10 +12,21 @@ export default function Dashboard() {
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
   
-  // Modals & Navigation triggers
+  // Navigation & UI Triggers
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showBadges, setShowBadges] = useState(false);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
+
+  // Responsive device adapters
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [activeMobileTab, setActiveMobileTab] = useState("instructions"); // "instructions" | "workspace"
+
+  // Gateway form states (when unauthenticated)
+  const [gatewayView, setGatewayView] = useState("login"); // "login" | "signup"
+  const [gatewayEmail, setGatewayEmail] = useState("");
+  const [gatewayPassword, setGatewayPassword] = useState("");
+  const [gatewayConfirmPassword, setGatewayConfirmPassword] = useState("");
+  const [gatewayLoading, setGatewayLoading] = useState(false);
+  const [gatewayMessage, setGatewayMessage] = useState(null);
 
   // Lesson workspace states
   const currentChapter = CHAPTERS[activeChapterIndex] || CHAPTERS[0];
@@ -38,8 +48,9 @@ export default function Dashboard() {
   const [tutorMessage, setTutorMessage] = useState("");
   const [loadingTutor, setLoadingTutor] = useState(false);
 
-  // 1. Fetch user progress from Supabase or Local Guest fallback
+  // 1. Fetch user progress from Supabase
   const loadProgress = async (currentUser) => {
+    if (!currentUser) return;
     try {
       const data = await fetchUserProgress();
       setProgress(data);
@@ -65,30 +76,38 @@ export default function Dashboard() {
     }
   };
 
-  // 2. Setup Supabase Auth state listener on mount
+  // 2. Setup resize listener and Supabase session state on mount
   useEffect(() => {
-    // Check active session immediately
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener("resize", handleResize);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       const activeUser = session?.user || null;
       setUser(activeUser);
       loadProgress(activeUser);
     });
 
-    // Listen for Auth updates
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const activeUser = session?.user || null;
       setUser(activeUser);
-      loadProgress(activeUser);
+      if (activeUser) {
+        loadProgress(activeUser);
+      } else {
+        setProgress(null);
+      }
     });
 
     return () => {
+      window.removeEventListener("resize", handleResize);
       subscription.unsubscribe();
     };
   }, []);
 
   // 3. Sync editor, sandbox, and terminal logs whenever lesson changes
   useEffect(() => {
-    if (currentLesson) {
+    if (currentLesson && user) {
       if (currentLesson.activityType === "code") {
         setCodeValue(currentLesson.startingCode);
       } else {
@@ -103,8 +122,9 @@ export default function Dashboard() {
       setSuccess(null);
       setValidationTips("");
       setTutorMessage("");
+      setActiveMobileTab("instructions");
     }
-  }, [activeChapterIndex, activeLessonIndex]);
+  }, [activeChapterIndex, activeLessonIndex, user]);
 
   // 4. Helper to update and persist progress
   const updateProgressState = async (newProgress) => {
@@ -119,7 +139,7 @@ export default function Dashboard() {
   const handleLessonSelect = (chapIdx, lesIdx) => {
     setActiveChapterIndex(chapIdx);
     setActiveLessonIndex(lesIdx);
-    setDrawerOpen(false); // Close nav drawer automatically on selection
+    setDrawerOpen(false); 
   };
 
   const handleRunCode = async () => {
@@ -313,6 +333,155 @@ export default function Dashboard() {
     }
   };
 
+  // Gateway form submits
+  const handleGatewaySubmit = async (e) => {
+    e.preventDefault();
+    setGatewayLoading(true);
+    setGatewayMessage(null);
+
+    try {
+      if (gatewayView === "login") {
+        if (!gatewayEmail || !gatewayPassword) throw new Error("Email and password are required.");
+        await loginUser(gatewayEmail, gatewayPassword);
+        setGatewayMessage({ type: "success", text: "Signed in successfully! Loading course workspace..." });
+      } else {
+        if (!gatewayEmail || !gatewayPassword) throw new Error("Email and password are required.");
+        if (gatewayPassword !== gatewayConfirmPassword) throw new Error("Passwords do not match.");
+        if (gatewayPassword.length < 6) throw new Error("Password must be at least 6 characters.");
+        
+        await signupUser(gatewayEmail, gatewayPassword);
+        setGatewayMessage({ type: "success", text: "Account created successfully! Check your email to confirm or log in." });
+        setTimeout(() => {
+          setGatewayView("login");
+          setGatewayMessage(null);
+          setGatewayPassword("");
+          setGatewayConfirmPassword("");
+        }, 3000);
+      }
+    } catch (err) {
+      setGatewayMessage({ type: "error", text: err.message || "An authentication error occurred." });
+    } finally {
+      setGatewayLoading(false);
+    }
+  };
+
+  // 1. STRICT LOCK: Renders the full-screen Welcome Gateway if unauthenticated
+  if (!user) {
+    return (
+      <div className="welcome-gateway-container">
+        <div className="gateway-center-card">
+          {/* Left section: Features list */}
+          <div className="gateway-info-section">
+            <div className="gateway-logo-block">
+              <span className="gateway-logo-icon">🛤️</span>
+              <span className="gateway-logo-text">BehindTheSite</span>
+            </div>
+            <h1>Master Backend Engineering</h1>
+            <p>Go from complete coding beginner to building production-ready modular APIs, AI connections, and PostgreSQL database triggers.</p>
+
+            <div className="gateway-bullets-list">
+              <div className="gateway-bullet-item">
+                <span className="bullet-icon-check">✓</span>
+                <div className="bullet-details">
+                  <h4>Concept-Isolated Micro-Lessons</h4>
+                  <p>Each module isolates exactly one target backend rule with interactive exercises under 5 minutes.</p>
+                </div>
+              </div>
+              <div className="gateway-bullet-item">
+                <span className="bullet-icon-check">✓</span>
+                <div className="bullet-details">
+                  <h4>Sleek DataCamp Split-Screen</h4>
+                  <p>Read instructions, write python code, and execute live tests in a side-by-side layout.</p>
+                </div>
+              </div>
+              <div className="gateway-bullet-item">
+                <span className="bullet-icon-check">✓</span>
+                <div className="bullet-details">
+                  <h4>Dynamic Layer Sandbox</h4>
+                  <p>Drag and structure modular directories (routes, controllers, configurations) like a senior architect.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right section: Auth Form Stack */}
+          <div className="gateway-form-section">
+            <h2>{gatewayView === "login" ? "Welcome Back!" : "Start Learning Free"}</h2>
+            <p className="gateway-subtitle">
+              {gatewayView === "login" ? "Sign in to synchronize your backend progress." : "Create your student account to unlock the course."}
+            </p>
+
+            {gatewayMessage && (
+              <div className={`auth-status-banner ${gatewayMessage.type}`} style={{ marginBottom: "16px" }}>
+                {gatewayMessage.type === "error" ? "⚠️ " : "✓ "} {gatewayMessage.text}
+              </div>
+            )}
+
+            <form onSubmit={handleGatewaySubmit} className="auth-form-stack">
+              <div className="auth-input-group">
+                <label>Email Address</label>
+                <input
+                  type="email"
+                  placeholder="you@domain.com"
+                  value={gatewayEmail}
+                  onChange={(e) => setGatewayEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="auth-input-group">
+                <label>Password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={gatewayPassword}
+                  onChange={(e) => setGatewayPassword(e.target.value)}
+                  required
+                />
+              </div>
+
+              {gatewayView === "signup" && (
+                <div className="auth-input-group">
+                  <label>Confirm Password</label>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    value={gatewayConfirmPassword}
+                    onChange={(e) => setGatewayConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+
+              <button type="submit" className="auth-submit-btn" style={{ marginTop: "10px" }} disabled={gatewayLoading}>
+                {gatewayLoading ? "Processing..." : gatewayView === "login" ? "Log In" : "Sign Up"}
+              </button>
+            </form>
+
+            <div className="auth-footer-toggle">
+              {gatewayView === "login" ? (
+                <div>
+                  Don't have an account?{" "}
+                  <button className="auth-link-btn" onClick={() => { setGatewayView("signup"); setGatewayMessage(null); }}>
+                    Register here
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  Already registered?{" "}
+                  <button className="auth-link-btn" onClick={() => { setGatewayView("login"); setGatewayMessage(null); }}>
+                    Log in here
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. LOADING STATE: Renders while fetching authenticated student profile from Supabase
   if (!progress) {
     return (
       <div className="loading-screen">
@@ -322,62 +491,61 @@ export default function Dashboard() {
     );
   }
 
+  // 3. WORKSPACE: Renders only when user has a valid Supabase authenticated session
   return (
     <div className="dashboard-container">
-      {/* 1. TOP HEADER (Pure DataCamp style: chapter breadcrumbs and stats) */}
+      {/* HEADER BAR */}
       <header className="dashboard-header">
         <div className="header-left-side">
           <button className="hamburger-menu-btn" onClick={() => setDrawerOpen(!drawerOpen)} title="Open Course Syllabus">
             ☰
           </button>
           <div className="breadcrumbs-path">
-            <span className="chapter-label">CH {currentChapter.id}: {currentChapter.title}</span>
+            <span className="chapter-label">CH {currentChapter.id}</span>
             <span className="path-arrow">➔</span>
-            <span className="lesson-label">{currentLesson.id}: {currentLesson.title}</span>
+            <span className="lesson-label">{currentLesson.id}</span>
           </div>
         </div>
 
         <div className="header-right-stats">
           <div className="stat-pill streak" title="Activity Streak">
-            🔥 <span className="stat-val">{progress.streak} Day Streak</span>
+            🔥 <span className="stat-val">{progress.streak}</span>
           </div>
           <div className="stat-pill xp" title="Student Experience Points">
             ⚡ <span className="stat-val">{progress.xp} XP</span>
           </div>
           <button className="badges-trigger-btn" onClick={() => setShowBadges(!showBadges)}>
-            🏆 Badges ({progress.achievements.length})
+            🏆 {progress.achievements.length}
           </button>
 
-          {user ? (
-            <>
-              <button className="badges-trigger-btn" style={{ borderColor: "rgba(59, 130, 246, 0.4)", color: "#3b82f6" }} title={`Logged in as ${user.email}`}>
-                👤 {user.email.split("@")[0]}
-              </button>
-              <button className="reset-api-btn" onClick={handleLogout} title="Log Out">
-                🚪 Logout
-              </button>
-            </>
-          ) : (
-            <button className="badges-trigger-btn" style={{ backgroundColor: "#3b82f6", color: "#fff", border: "none" }} onClick={() => setIsAuthOpen(true)}>
-              🔑 Login / Sign Up
-            </button>
-          )}
-
-          <button className="reset-api-btn" onClick={handleResetCourse} title="Reset Course Data">
-            🔄 Reset
+          <button className="badges-trigger-btn" style={{ borderColor: "rgba(59, 130, 246, 0.4)", color: "#3b82f6" }} title={`Logged in as ${user.email}`}>
+            👤 {user.email.split("@")[0]}
+          </button>
+          <button className="reset-api-btn" onClick={handleLogout} title="Log Out">
+            🚪
           </button>
         </div>
       </header>
 
-      {/* 1.1 GUEST WARNING TOP BANNER */}
-      {progress.isGuest && (
-        <div className="guest-warning-top-banner">
-          <span>⚠️ Guest Sandbox: Your XP and completed chapters are saved in-memory only.</span>
-          <button onClick={() => setIsAuthOpen(true)}>🔑 Create Account to Save Progress</button>
+      {/* MOBILE RESPONSIVE TAB BARS */}
+      {isMobile && (
+        <div className="mobile-viewport-tabs">
+          <button 
+            className={`mobile-tab-btn ${activeMobileTab === "instructions" ? "active" : ""}`}
+            onClick={() => setActiveMobileTab("instructions")}
+          >
+            📖 Instructions
+          </button>
+          <button 
+            className={`mobile-tab-btn ${activeMobileTab === "workspace" ? "active" : ""}`}
+            onClick={() => setActiveMobileTab("workspace")}
+          >
+            💻 Workspace & Console
+          </button>
         </div>
       )}
 
-      {/* 2. FLOATING SYLLABUS OVERLAY DRAWER (Sliding menu outline of 15 chapters) */}
+      {/* FLOATING SYLLABUS OVERLAY DRAWER */}
       {drawerOpen && (
         <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)}>
           <div className="drawer-side-menu" onClick={(e) => e.stopPropagation()}>
@@ -418,7 +586,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 3. ACHIEVEMENTS MODAL */}
+      {/* ACHIEVEMENTS MODAL */}
       {showBadges && (
         <div className="badges-drawer-overlay" onClick={() => setShowBadges(false)}>
           <div className="badges-drawer-content" onClick={(e) => e.stopPropagation()}>
@@ -444,33 +612,33 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 4. WORKSPACE LAYOUT (DataCamp Side-by-Side 40% Left / 60% Right split screen) */}
+      {/* WORKSPACE LAYOUT */}
       <div className="workspace-layout">
-        {/* LEFT COLUMN PANEL (40% width - pure lesson texts & objectives instructions) */}
-        <div className="workspace-left-instructions-pane">
+        {/* LEFT COLUMN PANEL (Instructions) */}
+        <div className={`workspace-left-instructions-pane ${(!isMobile || activeMobileTab === "instructions") ? "active-tab" : ""}`}>
           <div className="instructions-scrollable-content">
-            {/* Breadcrumb section indicator */}
             <div className="instructions-section-tag">
-              <span>Section A ➔ Micro-Lesson {currentLesson.type}</span>
+              Section {currentLesson.id.split(".")[0]} ➔ Micro-Lesson {currentLesson.id}
             </div>
+            <h2 className="lesson-title-heading">{currentLesson.title}</h2>
 
-            {/* Concept text explanation */}
             <div className="instructions-markdown-body">
-              <p className="concept-lead-text">{currentLesson.concept}</p>
+              <p className="concept-paragraph">{currentLesson.concept}</p>
               
-              <div className="instructions-concept-block">
-                <h4>🧠 Focus Concept</h4>
-                <p>{currentLesson.problem}</p>
-              </div>
+              {currentLesson.startingCode && currentLesson.activityType === "code" && (
+                <div className="instructions-code-callout">
+                  <code>python -m bts.service</code>
+                </div>
+              )}
+
+              <p className="concept-paragraph">{currentLesson.problem}</p>
             </div>
 
-            {/* Strict, Bordered DataCamp Instructions Checklist Box */}
             <div className="datacamp-instructions-checklist-box">
               <div className="instructions-box-header">
                 <span className="box-title">INSTRUCTIONS</span>
               </div>
               <div className="instructions-box-body">
-                <p className="instructions-step-intro">Write code or answers to accomplish the following:</p>
                 <ul className="instructions-steps-list">
                   {currentLesson.activityType === "code" && (
                     <li>
@@ -481,39 +649,25 @@ export default function Dashboard() {
                   {currentLesson.activityType === "quiz" && (
                     <li>
                       <span className="step-bullet">■</span>
-                      <span>Read the security question and select the single best option matching professional guidelines.</span>
+                      <span>Read the question and select the single best option matching professional guidelines.</span>
                     </li>
                   )}
                   {currentLesson.activityType === "sandbox" && (
                     <li>
                       <span className="step-bullet">■</span>
-                      <span>Link all modular folder layers on the matchsandbox directory to organize routes, models, services, and configs correctly.</span>
+                      <span>Link all modular folder layers on the matchsandbox directory to organize folders correctly.</span>
                     </li>
                   )}
                 </ul>
               </div>
             </div>
-
-            {/* Embedded AI Tutor Assistant Dialogue directly below instruction card */}
-            {tutorMessage && (
-              <div className="embedded-tutor-assistant-card">
-                <div className="tutor-card-header">
-                  <span>🤖 AI Tutor Assistant</span>
-                  <button onClick={() => setTutorMessage("")} className="tutor-close-btn">×</button>
-                </div>
-                <div className="tutor-card-body">
-                  <p>{tutorMessage}</p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* RIGHT COLUMN PANEL (60% width - active coding editor/choices and console outputs) */}
-        <div className="workspace-right-ide-pane">
-          {/* TOP RIGHT: Editor / Quiz Stack */}
+        {/* RIGHT COLUMN PANEL (IDE) */}
+        <div className={`workspace-right-ide-pane ${(!isMobile || activeMobileTab === "workspace") ? "active-tab" : ""}`}>
           <div className="workspace-right-top-editor">
-            {/* Tab Bar (pure DataCamp IDE design) */}
+            {/* Tab Bar */}
             <div className="editor-tab-bar">
               <div className="active-tab-file">
                 <span className="file-icon">📄</span>
@@ -526,9 +680,9 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Dynamic Workspace Workspace */}
+            {/* Editor Workspace */}
             <div className="editor-workspace-content">
-              {/* 1. CODE WORKSPACE */}
+              {/* CODE WORKSPACE */}
               {currentLesson.activityType === "code" && (
                 <div className="datacamp-textarea-editor">
                   <div className="editor-line-numbers">
@@ -545,7 +699,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* 2. QUIZ WORKSPACE */}
+              {/* QUIZ WORKSPACE */}
               {currentLesson.activityType === "quiz" && (
                 <div className="datacamp-quiz-selection-stack">
                   <div className="quiz-question-title">
@@ -569,7 +723,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* 3. SANDBOX WORKSPACE */}
+              {/* SANDBOX WORKSPACE */}
               {currentLesson.activityType === "sandbox" && (
                 <FolderSandbox
                   lesson={currentLesson}
@@ -582,7 +736,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* BOTTOM RIGHT: IPython-like Command Terminal Output */}
+          {/* Terminal Console */}
           <div className="workspace-right-bottom-console">
             <TerminalConsole 
               logs={logs} 
@@ -591,17 +745,17 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* INTEGRATED ACTION FOOTER BAR (Replicating DataCamp controls exactly) */}
+          {/* INTEGRATED ACTION FOOTER */}
           <footer className="ide-control-footer">
             <div className="footer-left-controls">
               <button className="control-action-btn show-sol" onClick={handleShowSolution} title="Review correct script">
-                🔑 Show Solution
+                🔑 Solution
               </button>
               <button className="control-action-btn get-hint" onClick={handleGetHint} title="Costs 10 XP">
-                💡 Hint (-10 XP)
+                💡 Hint (-10)
               </button>
               <button className="control-action-btn consult-tutor" onClick={handleAskTutor} disabled={loadingTutor}>
-                🤖 {loadingTutor ? "Consulting AI..." : "Consult AI Tutor"}
+                🤖 {loadingTutor ? "..." : "Ask Tutor"}
               </button>
             </div>
 
@@ -614,24 +768,30 @@ export default function Dashboard() {
               
               {success === true ? (
                 <button className="action-main-btn next-lesson-btn glow" onClick={handleNextLesson}>
-                  Next Lesson ➔
+                  Next ➔
                 </button>
               ) : (
                 <button className="action-main-btn submit-answer-btn" onClick={handleSubmitAnswer}>
-                  🚀 Submit Answer
+                  🚀 Submit
                 </button>
               )}
             </div>
           </footer>
         </div>
-      </div>
 
-      {/* 5. GORGEOUS SLEEK AUTHENTICATION MODAL */}
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
-        onAuthSuccess={() => loadProgress(user)}
-      />
+        {/* AI TUTOR CHAT POPUP */}
+        {tutorMessage && (
+          <div className="floating-ai-tutor-bubble">
+            <div className="floating-tutor-header">
+              <h4>🤖 AI Tutor Feedback</h4>
+              <button onClick={() => setTutorMessage("")} className="floating-tutor-close">×</button>
+            </div>
+            <div className="floating-tutor-body">
+              <p>{tutorMessage}</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
