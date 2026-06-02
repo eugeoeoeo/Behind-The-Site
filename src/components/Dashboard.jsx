@@ -373,7 +373,7 @@ export default function Dashboard() {
           {/* Left section: Features list */}
           <div className="gateway-info-section">
             <div className="gateway-logo-block">
-              <span className="gateway-logo-icon">🛤️</span>
+              <span className="gateway-logo-icon" style={{ color: "var(--dc-green)" }}>🛤️</span>
               <span className="gateway-logo-text">BehindTheSite</span>
             </div>
             <h1>Master Backend Engineering</h1>
@@ -381,21 +381,21 @@ export default function Dashboard() {
 
             <div className="gateway-bullets-list">
               <div className="gateway-bullet-item">
-                <span className="bullet-icon-check">✓</span>
+                <span className="bullet-icon-check" style={{ color: "var(--dc-green)" }}>✓</span>
                 <div className="bullet-details">
                   <h4>Concept-Isolated Micro-Lessons</h4>
                   <p>Each module isolates exactly one target backend rule with interactive exercises under 5 minutes.</p>
                 </div>
               </div>
               <div className="gateway-bullet-item">
-                <span className="bullet-icon-check">✓</span>
+                <span className="bullet-icon-check" style={{ color: "var(--dc-green)" }}>✓</span>
                 <div className="bullet-details">
                   <h4>Sleek DataCamp Split-Screen</h4>
                   <p>Read instructions, write python code, and execute live tests in a side-by-side layout.</p>
                 </div>
               </div>
               <div className="gateway-bullet-item">
-                <span className="bullet-icon-check">✓</span>
+                <span className="bullet-icon-check" style={{ color: "var(--dc-green)" }}>✓</span>
                 <div className="bullet-details">
                   <h4>Dynamic Layer Sandbox</h4>
                   <p>Drag and structure modular directories (routes, controllers, configurations) like a senior architect.</p>
@@ -416,6 +416,24 @@ export default function Dashboard() {
                 {gatewayMessage.type === "error" ? "⚠️ " : "✓ "} {gatewayMessage.text}
               </div>
             )}
+
+            {/* Social logins matching DataCamp */}
+            <div className="gateway-social-grid">
+              <button type="button" className="gateway-social-btn" onClick={() => alert("Google Single Sign-On is simulated in development mode.")}>
+                <svg viewBox="0 0 24 24">
+                  <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.69 5.69 0 0 1 8.24 12.8a5.69 5.69 0 0 1 5.751-5.714c2.519 0 4.13 1.094 5.084 2.01l3.003-2.946C20.25 4.347 17.202 3 13.99 3A9.79 9.79 0 0 0 4.24 12.8a9.79 9.79 0 0 0 9.75 9.8c5.444 0 9.76-3.834 9.76-9.8 0-.596-.058-1.184-.158-1.515H12.24Z"/>
+                </svg>
+                Google
+              </button>
+              <button type="button" className="gateway-social-btn" onClick={() => alert("GitHub Single Sign-On is simulated in development mode.")}>
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+                </svg>
+                GitHub
+              </button>
+            </div>
+
+            <div className="gateway-divider">or</div>
 
             <form onSubmit={handleGatewaySubmit} className="auth-form-stack">
               <div className="auth-input-group">
@@ -453,7 +471,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <button type="submit" className="auth-submit-btn" style={{ marginTop: "10px" }} disabled={gatewayLoading}>
+              <button type="submit" className="auth-submit-btn" disabled={gatewayLoading}>
                 {gatewayLoading ? "Processing..." : gatewayView === "login" ? "Log In" : "Sign Up"}
               </button>
             </form>

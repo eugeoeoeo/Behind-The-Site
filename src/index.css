@@ -3,26 +3,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 :root {
-  /* Dynamic Slate System */
-  --dc-bg-header: #0f1423;
-  --dc-bg-instructions: #141b2e;
-  --dc-bg-editor: #090d16;
-  --dc-bg-console: #05080e;
-  --dc-bg-footer: #0c101c;
-  --dc-bg-card: #1b2234;
+  /* Dynamic Slate System - DataCamp Parity */
+  --dc-bg-header: #05192d;
+  --dc-bg-instructions: #08233c;
+  --dc-bg-editor: #031424;
+  --dc-bg-console: #010a12;
+  --dc-bg-footer: #041628;
+  --dc-bg-card: #0c2a46;
   
-  --dc-border: #1e263d;
-  --dc-border-hover: #313d60;
+  --dc-border: #133c63;
+  --dc-border-hover: #1e568b;
   --dc-blue: #3b82f6;
   --dc-blue-glow: rgba(59, 130, 246, 0.15);
   
-  --dc-text-muted: #8295ad;
-  --dc-text-main: #cdd7e4;
+  --dc-text-muted: #8fa0ba;
+  --dc-text-main: #d0dbe9;
   --dc-text-bright: #ffffff;
   
-  --dc-green: #10b981;
-  --dc-green-glow: rgba(16, 185, 129, 0.15);
-  --dc-green-hover: #059669;
+  --dc-green: #03ef62;
+  --dc-green-glow: rgba(3, 239, 98, 0.15);
+  --dc-green-hover: #02d655;
   --dc-amber: #f59e0b;
   --dc-red: #ef4444;
   
@@ -232,12 +232,12 @@ body {
   position: relative;
 }
 
-/* LEFT COLUMN (INSTRUCTIONS) */
+/* LEFT COLUMN (INSTRUCTIONS) - high-contrast DataCamp light panel */
 .workspace-left-instructions-pane {
   width: 40%;
   min-width: 320px;
-  background-color: var(--dc-bg-instructions);
-  border-right: 1px solid var(--dc-border);
+  background-color: #ffffff;
+  border-right: 1px solid #dbe6ec;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -247,10 +247,11 @@ body {
 .instructions-scrollable-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  background-color: #ffffff;
 }
 
 .instructions-section-tag {
@@ -258,24 +259,25 @@ body {
   font-size: 11px;
   color: var(--dc-blue);
   text-transform: uppercase;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.5px;
 }
 
 .lesson-title-heading {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--dc-text-bright);
+  font-size: 22px;
+  font-weight: 800;
+  color: #05203c;
   margin-bottom: 4px;
+  letter-spacing: -0.5px;
 }
 
 .instructions-markdown-body {
-  font-size: 14px;
+  font-size: 14.5px;
   line-height: 1.6;
-  color: var(--dc-text-main);
+  color: #3b4956;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 /* DECLUTTERED NARRATIVE FLOW */
@@ -284,48 +286,51 @@ body {
 }
 
 .instructions-code-callout {
-  background-color: var(--dc-bg-editor);
-  border: 1px solid var(--dc-border);
+  background-color: #f4f6f8;
+  border: 1px solid #cbdbe6;
   border-radius: 4px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   font-family: var(--mono);
   font-size: 12.5px;
-  color: var(--dc-amber);
+  color: #d0382b;
   margin: 6px 0;
+  font-weight: 600;
 }
 
-/* MINIMALIST INSTRUCTIONS BOX */
+/* SIGNATURE DATACAMP INSTRUCTIONS BOX */
 .datacamp-instructions-checklist-box {
-  background-color: rgba(59, 130, 246, 0.03);
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  background-color: #f3f7fa;
+  border: 1px solid #dbe6ec;
+  border-left: 4px solid var(--dc-green);
   border-radius: 4px;
-  margin-top: 8px;
+  margin-top: 12px;
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .instructions-box-header {
-  background-color: rgba(59, 130, 246, 0.08);
-  padding: 8px 14px;
-  border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+  background-color: rgba(59, 130, 246, 0.03);
+  padding: 10px 14px;
+  border-bottom: 1px solid #dbe6ec;
 }
 
 .box-title {
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 800;
-  color: var(--dc-blue);
+  color: #05203c;
   letter-spacing: 1px;
 }
 
 .instructions-box-body {
-  padding: 14px;
+  padding: 16px;
 }
 
 .instructions-steps-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .instructions-steps-list li {
@@ -333,14 +338,16 @@ body {
   gap: 10px;
   font-size: 13.5px;
   line-height: 1.5;
-  color: var(--dc-text-bright);
+  color: #05203c;
+  font-weight: 600;
 }
 
 .step-bullet {
-  color: var(--dc-blue);
+  color: var(--dc-green);
   font-size: 10px;
   line-height: 1.8;
 }
+
 
 /* RIGHT COLUMN (IDE & WORKSPACE) */
 .workspace-right-ide-pane {
@@ -1371,25 +1378,204 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  background-color: var(--dc-bg-editor);
 }
 
 .gateway-form-section h2 {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 800;
   color: var(--dc-text-bright);
   margin-bottom: 6px;
+  letter-spacing: -0.5px;
 }
 
 .gateway-subtitle {
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--dc-text-muted);
   margin-bottom: 24px;
+  line-height: 1.5;
 }
 
-.gateway-input-grid {
+.auth-form-stack {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
+}
+
+.auth-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-input-group label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--dc-text-muted);
+  letter-spacing: 1px;
+}
+
+.auth-input-group input {
+  height: 42px;
+  background-color: var(--dc-bg-header);
+  border: 1px solid var(--dc-border);
+  border-radius: 4px;
+  padding: 0 14px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--dc-text-bright);
+  transition: all 0.2s ease;
+}
+
+.auth-input-group input:focus {
+  outline: none;
+  border-color: var(--dc-green);
+  box-shadow: 0 0 0 3px rgba(3, 239, 98, 0.15);
+}
+
+/* Primary Neon Green DataCamp Button */
+.auth-submit-btn {
+  height: 44px;
+  background-color: var(--dc-green);
+  color: #05192d !important;
+  border: none;
+  border-radius: 4px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: 10px;
+  box-shadow: 0 4px 12px rgba(3, 239, 98, 0.2);
+}
+
+.auth-submit-btn:hover {
+  background-color: var(--dc-green-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(3, 239, 98, 0.3);
+}
+
+.auth-submit-btn:active {
+  transform: translateY(0);
+}
+
+.auth-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Beautiful Divider */
+.gateway-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: var(--dc-text-muted);
+  font-size: 12px;
+  margin: 24px 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.gateway-divider::before,
+.gateway-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--dc-border);
+}
+
+.gateway-divider:not(:empty)::before {
+  margin-right: .75em;
+}
+
+.gateway-divider:not(:empty)::after {
+  margin-left: .75em;
+}
+
+/* Social Buttons Grid */
+.gateway-social-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   margin-bottom: 20px;
 }
+
+.gateway-social-btn {
+  height: 40px;
+  background-color: var(--dc-bg-header);
+  border: 1px solid var(--dc-border);
+  border-radius: 4px;
+  color: var(--dc-text-main);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.gateway-social-btn:hover {
+  background-color: var(--dc-bg-card);
+  border-color: var(--dc-border-hover);
+  color: var(--dc-text-bright);
+}
+
+.gateway-social-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Link Actions */
+.auth-footer-toggle {
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--dc-text-muted);
+  margin-top: 16px;
+}
+
+.auth-link-btn {
+  background: none;
+  border: none;
+  color: var(--dc-green);
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease;
+  text-decoration: none;
+}
+
+.auth-link-btn:hover {
+  color: var(--dc-green-hover);
+  text-decoration: underline;
+}
+
+/* Status Banners */
+.auth-status-banner {
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.auth-status-banner.error {
+  background-color: rgba(239, 68, 68, 0.08);
+  border: 1px solid var(--dc-red);
+  color: var(--dc-red);
+}
+
+.auth-status-banner.success {
+  background-color: rgba(3, 239, 98, 0.08);
+  border: 1px solid var(--dc-green);
+  color: var(--dc-green);
+}
+
 
