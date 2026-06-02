@@ -1,26 +1,25 @@
 import React, { useState, useEffect } from "react";
 import { CHAPTERS } from "../data/courseData";
-import { fetchUserProgress, saveUserProgress, resetUserProgress, queryAITutor, logoutUser, loginUser, signupUser } from "../services/apiService";
+import { fetchUserProgress, saveUserProgress, resetUserProgress, logoutUser, loginUser, signupUser } from "../services/apiService";
 import { supabase } from "../services/supabaseClient";
-import FolderSandbox from "./editor/FolderSandbox";
-import TerminalConsole from "./simulator/TerminalConsole";
+import Workspace from "./Workspace";
 
 export default function Dashboard() {
-  // Progress & Session states
-  const [progress, setProgress] = useState(null);
+  // Authentication & Progress Session states
   const [user, setUser] = useState(null);
+  const [progress, setProgress] = useState(null);
+
+  // Active indices inside track
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
-  
-  // Navigation & UI Triggers
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [showBadges, setShowBadges] = useState(false);
 
-  // Responsive device adapters
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [activeMobileTab, setActiveMobileTab] = useState("instructions"); // "instructions" | "workspace"
+  // Toggle between Student Dashboard Hub and split-pane Workspace
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
 
-  // Gateway form states (when unauthenticated)
+  // Expanded chapters index dictionary for the dashboard accordions
+  const [expandedChapters, setExpandedChapters] = useState({ 0: true });
+
+  // Gateway credentials (when unauthenticated)
   const [gatewayView, setGatewayView] = useState("login"); // "login" | "signup"
   const [gatewayEmail, setGatewayEmail] = useState("");
   const [gatewayPassword, setGatewayPassword] = useState("");
@@ -28,25 +27,8 @@ export default function Dashboard() {
   const [gatewayLoading, setGatewayLoading] = useState(false);
   const [gatewayMessage, setGatewayMessage] = useState(null);
 
-  // Lesson workspace states
-  const currentChapter = CHAPTERS[activeChapterIndex] || CHAPTERS[0];
-  const currentLesson = currentChapter.lessons[activeLessonIndex] || currentChapter.lessons[0];
-
-  // Editor states
-  const [codeValue, setCodeValue] = useState("");
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [sandboxPassed, setSandboxPassed] = useState(false);
-  const [sandboxResult, setSandboxResult] = useState(null);
-
-  // Console and feedback states
-  const [logs, setLogs] = useState([]);
-  const [success, setSuccess] = useState(null);
-  const [validationTips, setValidationTips] = useState("");
-  const [isRunning, setIsRunning] = useState(false);
-
-  // AI Tutor state
-  const [tutorMessage, setTutorMessage] = useState("");
-  const [loadingTutor, setLoadingTutor] = useState(false);
+  // Total lessons count in the course syllabus mapping
+  const totalLessonsCount = CHAPTERS.reduce((sum, chap) => sum + chap.lessons.length, 0);
 
   // 1. Fetch user progress from Supabase
   const loadProgress = async (currentUser) => {
@@ -55,7 +37,7 @@ export default function Dashboard() {
       const data = await fetchUserProgress();
       setProgress(data);
       
-      // Find matching chapter and lesson index from loaded progress ID
+      // Auto-locate current chapter and lesson indices matching active tracking lesson
       if (data.activeLessonId) {
         let found = false;
         for (let cIdx = 0; cIdx < CHAPTERS.length; cIdx++) {
@@ -64,6 +46,8 @@ export default function Dashboard() {
             if (chap.lessons[lIdx].id === data.activeLessonId) {
               setActiveChapterIndex(cIdx);
               setActiveLessonIndex(lIdx);
+              // Expand active chapter accordion by default
+              setExpandedChapters((prev) => ({ ...prev, [cIdx]: true }));
               found = true;
               break;
             }
@@ -72,17 +56,12 @@ export default function Dashboard() {
         }
       }
     } catch (e) {
-      console.error("Failed to load student progress from API gateway", e);
+      console.error("Failed to load progress from database", e);
     }
   };
 
-  // 2. Setup resize listener and Supabase session state on mount
+  // 2. Setup auth listening on mount
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth <= 768);
-    };
-    window.addEventListener("resize", handleResize);
-
     supabase.auth.getSession().then(({ data: { session } }) => {
       const activeUser = session?.user || null;
       setUser(activeUser);
@@ -96,37 +75,16 @@ export default function Dashboard() {
         loadProgress(activeUser);
       } else {
         setProgress(null);
+        setWorkspaceOpen(false);
       }
     });
 
     return () => {
-      window.removeEventListener("resize", handleResize);
       subscription.unsubscribe();
     };
   }, []);
 
-  // 3. Sync editor, sandbox, and terminal logs whenever lesson changes
-  useEffect(() => {
-    if (currentLesson && user) {
-      if (currentLesson.activityType === "code") {
-        setCodeValue(currentLesson.startingCode);
-      } else {
-        setCodeValue("");
-      }
-      setSelectedOption(null);
-      setSandboxPassed(false);
-      setSandboxResult(null);
-      setLogs([
-        { type: "info", text: `Loaded Lesson ${currentLesson.id}: ${currentLesson.title}` }
-      ]);
-      setSuccess(null);
-      setValidationTips("");
-      setTutorMessage("");
-      setActiveMobileTab("instructions");
-    }
-  }, [activeChapterIndex, activeLessonIndex, user]);
-
-  // 4. Helper to update and persist progress
+  // 3. Persist progress state upgrades
   const updateProgressState = async (newProgress) => {
     setProgress(newProgress);
     try {
@@ -136,227 +94,24 @@ export default function Dashboard() {
     }
   };
 
-  const handleLessonSelect = (chapIdx, lesIdx) => {
-    setActiveChapterIndex(chapIdx);
-    setActiveLessonIndex(lesIdx);
-    setDrawerOpen(false); 
-  };
-
-  const handleRunCode = async () => {
-    if (currentLesson.activityType !== "code") return;
-
-    setIsRunning(true);
-    setLogs((prev) => [...prev, { type: "info", text: "Compiling Python script..." }]);
-    
-    await new Promise((r) => setTimeout(r, 1000));
-    setIsRunning(false);
-
-    const pattern = new RegExp(currentLesson.validationRegex, "i");
-    const isCodePassed = !codeValue.includes("____") && pattern.test(codeValue);
-
-    if (isCodePassed) {
-      setLogs((prev) => [
-        ...prev,
-        { type: "stdout", text: ">>> Running automated assert checks..." },
-        { type: "success", text: "✓ Test Suite OK: Execution returned the expected structure." }
-      ]);
-      setSuccess(true);
-      setValidationTips(`Checks passed! Click 'Submit Answer' to claim your +${currentLesson.xp} XP!`);
-    } else {
-      setLogs((prev) => [
-        ...prev,
-        { type: "error", text: "AssertionError: Expected outcome not met or syntax error placeholder found." }
-      ]);
-      setSuccess(false);
-      setValidationTips("Assertion check failed. Review placeholders and correct standard API keywords.");
-    }
-  };
-
-  const handleSubmitAnswer = async () => {
-    if (!progress) return;
-
-    let passed = false;
-    let feedback = "";
-
-    if (currentLesson.activityType === "quiz") {
-      if (selectedOption === currentLesson.correctAnswer) {
-        passed = true;
-        feedback = "Correct! Objective achieved.";
-      } else {
-        feedback = "Incorrect option chosen. Think about the concept rules and choose again.";
-      }
-    } else if (currentLesson.activityType === "code") {
-      const pattern = new RegExp(currentLesson.validationRegex, "i");
-      passed = !codeValue.includes("____") && pattern.test(codeValue);
-      feedback = passed 
-        ? "Excellent job! Python interpreter passed all constraints." 
-        : "Failed checks. Try running your script to trace exceptions.";
-    } else if (currentLesson.activityType === "sandbox") {
-      passed = sandboxPassed;
-      feedback = sandboxResult || "Arrange directory structure layers perfectly.";
-    }
-
-    if (passed) {
-      setSuccess(true);
-      setValidationTips(feedback);
-      setLogs((prev) => [...prev, { type: "success", text: `Lesson ${currentLesson.id} complete! +${currentLesson.xp} XP` }]);
-      
-      // Award XP, check streak, unlock achievements
-      const completedList = [...progress.completedLessons];
-      if (!completedList.includes(currentLesson.id)) {
-        completedList.push(currentLesson.id);
-      }
-      
-      const newXP = progress.xp + currentLesson.xp;
-      const achievements = [...progress.achievements];
-      
-      // Unlock first steps achievement
-      if (!achievements.includes("first_steps")) {
-        achievements.push("first_steps");
-      }
-      // Unlock folder master achievement
-      if (currentLesson.activityType === "sandbox" && !achievements.includes("folder_master")) {
-        achievements.push("folder_master");
-      }
-      // Unlock api architect achievement
-      if (currentChapter.id === 3 && !achievements.includes("route_architect")) {
-        achievements.push("route_architect");
-      }
-
-      // Check learning streak
-      const today = new Date().toDateString();
-      let streak = progress.streak;
-      if (progress.lastActivityDate !== today) {
-        streak = streak === 0 ? 1 : streak + 1;
-      }
-
-      const updatedProgress = {
-        ...progress,
-        completedLessons: completedList,
-        xp: newXP,
-        streak,
-        lastActivityDate: today,
-        achievements,
-        activeLessonId: currentLesson.id
-      };
-      
-      await updateProgressState(updatedProgress);
-    } else {
-      setSuccess(false);
-      setValidationTips(feedback);
-      setLogs((prev) => [...prev, { type: "error", text: "Verification rejected. Revise solutions." }]);
-    }
-  };
-
-  const handleGetHint = async () => {
-    if (!progress || progress.xp < 10) {
-      setLogs((prev) => [...prev, { type: "error", text: "Insufficient XP balance! Hints require at least 10 XP." }]);
-      return;
-    }
-    
-    // Deduct 10 XP
-    const updatedProgress = {
-      ...progress,
-      xp: Math.max(0, progress.xp - 10)
-    };
-    await updateProgressState(updatedProgress);
-
-    setLogs((prev) => [
-      ...prev,
-      { type: "info", text: `Deducted 10 XP for hint request. XP Balance: ${updatedProgress.xp}` },
-      { type: "info", text: `💡 Hint: ${currentLesson.hint}` }
-    ]);
-    setValidationTips(`💡 Hint: ${currentLesson.hint}`);
-  };
-
-  const handleShowSolution = () => {
-    if (currentLesson.activityType === "code") {
-      setCodeValue(currentLesson.correctCode);
-      setLogs((prev) => [...prev, { type: "info", text: "Solution loaded into the editor panel." }]);
-    } else if (currentLesson.activityType === "quiz") {
-      setSelectedOption(currentLesson.correctAnswer);
-      setLogs((prev) => [...prev, { type: "info", text: `Correct answer highlighted: option ${currentLesson.correctAnswer + 1}.` }]);
-    }
-  };
-
-  const handleNextLesson = () => {
-    let nextLesIdx = activeLessonIndex + 1;
-    let nextChapIdx = activeChapterIndex;
-
-    if (nextLesIdx >= currentChapter.lessons.length) {
-      nextLesIdx = 0;
-      nextChapIdx = activeChapterIndex + 1;
-    }
-
-    if (nextChapIdx < CHAPTERS.length) {
-      setActiveChapterIndex(nextChapIdx);
-      setActiveLessonIndex(nextLesIdx);
-    } else {
-      setLogs((prev) => [...prev, { type: "success", text: "Congratulations! You have completed all micro-lessons!" }]);
-    }
-  };
-
-  const handleAskTutor = async () => {
-    setLoadingTutor(true);
-    setTutorMessage("");
-    try {
-      const prompt = currentLesson.activityType === "code" ? codeValue : `Question choice: ${selectedOption}`;
-      const feedback = await queryAITutor(prompt, currentLesson);
-      setTutorMessage(feedback);
-    } catch (e) {
-      setTutorMessage("Failed to connect to AI tutor endpoint. Try again later.");
-    } finally {
-      setLoadingTutor(false);
-    }
-  };
-
-  const handleResetCourse = async () => {
-    if (window.confirm("Are you sure you want to reset all your cloud streak, achievements, and XP progress?")) {
-      try {
-        const resetProgressData = await resetUserProgress();
-        setProgress(resetProgressData);
-        setActiveChapterIndex(0);
-        setActiveLessonIndex(0);
-      } catch (e) {
-        console.error("Failed to reset student progress via API", e);
-      }
-    }
-  };
-
-  const handleLogout = async () => {
-    if (window.confirm("Are you sure you want to log out?")) {
-      try {
-        await logoutUser();
-      } catch (e) {
-        console.error("Logout failed", e);
-      }
-    }
-  };
-
-  // Gateway form submits
+  // 4. Handle Gateway Submissions
   const handleGatewaySubmit = async (e) => {
     e.preventDefault();
-    setGatewayLoading(true);
     setGatewayMessage(null);
+    setGatewayLoading(true);
 
     try {
-      if (gatewayView === "login") {
-        if (!gatewayEmail || !gatewayPassword) throw new Error("Email and password are required.");
-        await loginUser(gatewayEmail, gatewayPassword);
-        setGatewayMessage({ type: "success", text: "Signed in successfully! Loading course workspace..." });
-      } else {
-        if (!gatewayEmail || !gatewayPassword) throw new Error("Email and password are required.");
-        if (gatewayPassword !== gatewayConfirmPassword) throw new Error("Passwords do not match.");
-        if (gatewayPassword.length < 6) throw new Error("Password must be at least 6 characters.");
-        
+      if (gatewayView === "signup") {
+        if (gatewayPassword !== gatewayConfirmPassword) {
+          throw new Error("Passwords do not match.");
+        }
         await signupUser(gatewayEmail, gatewayPassword);
-        setGatewayMessage({ type: "success", text: "Account created successfully! Check your email to confirm or log in." });
-        setTimeout(() => {
-          setGatewayView("login");
-          setGatewayMessage(null);
-          setGatewayPassword("");
-          setGatewayConfirmPassword("");
-        }, 3000);
+        setGatewayMessage({
+          type: "success",
+          text: "Registration complete! You are logged in."
+        });
+      } else {
+        await loginUser(gatewayEmail, gatewayPassword);
       }
     } catch (err) {
       setGatewayMessage({ type: "error", text: err.message || "An authentication error occurred." });
@@ -365,12 +120,43 @@ export default function Dashboard() {
     }
   };
 
-  // 1. STRICT LOCK: Renders the full-screen Welcome Gateway if unauthenticated
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      setUser(null);
+      setProgress(null);
+      setWorkspaceOpen(false);
+    } catch (e) {
+      console.error("Logout failed", e);
+    }
+  };
+
+  const handleResetProgress = async () => {
+    if (!window.confirm("Are you sure you want to reset your curriculum progress? This will reset your XP and streak to 0.")) return;
+    try {
+      const freshProgress = await resetUserProgress();
+      setProgress(freshProgress);
+      setActiveChapterIndex(0);
+      setActiveLessonIndex(0);
+      alert("Progress successfully reset!");
+    } catch (e) {
+      console.error("Failed to reset progress", e);
+    }
+  };
+
+  const toggleChapter = (cIdx) => {
+    setExpandedChapters((prev) => ({
+      ...prev,
+      [cIdx]: !prev[cIdx]
+    }));
+  };
+
+  // Render Authentication overlay if session does not exist
   if (!user) {
     return (
       <div className="welcome-gateway-container">
         <div className="gateway-center-card">
-          {/* Left section: Features list */}
+          {/* Left info panel */}
           <div className="gateway-info-section">
             <div className="gateway-logo-block">
               <span className="gateway-logo-icon" style={{ color: "var(--dc-green)" }}>🛤️</span>
@@ -404,7 +190,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Right section: Auth Form Stack */}
+          {/* Right credentials panel */}
           <div className="gateway-form-section">
             <h2>{gatewayView === "login" ? "Welcome Back!" : "Start Learning Free"}</h2>
             <p className="gateway-subtitle">
@@ -417,15 +203,14 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Social logins matching DataCamp */}
             <div className="gateway-social-grid">
-              <button type="button" className="gateway-social-btn" onClick={() => alert("Google Single Sign-On is simulated in development mode.")}>
+              <button type="button" className="gateway-social-btn" onClick={() => alert("Google SSO is simulated in development mode.")}>
                 <svg viewBox="0 0 24 24">
                   <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.69 5.69 0 0 1 8.24 12.8a5.69 5.69 0 0 1 5.751-5.714c2.519 0 4.13 1.094 5.084 2.01l3.003-2.946C20.25 4.347 17.202 3 13.99 3A9.79 9.79 0 0 0 4.24 12.8a9.79 9.79 0 0 0 9.75 9.8c5.444 0 9.76-3.834 9.76-9.8 0-.596-.058-1.184-.158-1.515H12.24Z"/>
                 </svg>
                 Google
               </button>
-              <button type="button" className="gateway-social-btn" onClick={() => alert("GitHub Single Sign-On is simulated in development mode.")}>
+              <button type="button" className="gateway-social-btn" onClick={() => alert("GitHub SSO is simulated in development mode.")}>
                 <svg viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
                 </svg>
@@ -499,7 +284,7 @@ export default function Dashboard() {
     );
   }
 
-  // 2. LOADING STATE: Renders while fetching authenticated student profile from Supabase
+  // Render Loader if progress database fetch hasn't resolved
   if (!progress) {
     return (
       <div className="loading-screen">
@@ -509,306 +294,321 @@ export default function Dashboard() {
     );
   }
 
-  // 3. WORKSPACE: Renders only when user has a valid Supabase authenticated session
+  // CONDITIONALLY RENDER SPLIT WORKSPACE IDE VIEW
+  if (workspaceOpen) {
+    return (
+      <Workspace
+        user={user}
+        progress={progress}
+        activeChapterIndex={activeChapterIndex}
+        activeLessonIndex={activeLessonIndex}
+        onBackToDashboard={() => setWorkspaceOpen(false)}
+        onLessonSelect={(chapIdx, lesIdx) => {
+          setActiveChapterIndex(chapIdx);
+          setActiveLessonIndex(lesIdx);
+        }}
+        onProgressUpdate={updateProgressState}
+      />
+    );
+  }
+
+  // OTHERWISE, RENDER DATACAMP AUTHENTIC STUDENT LEARNING PORTAL/DASHBOARD
+  const completionRate = Math.round((progress.completedLessons.length / totalLessonsCount) * 100);
+
   return (
-    <div className="dashboard-container">
-      {/* HEADER BAR */}
-      <header className="dashboard-header">
+    <div className="student-dashboard-portal" style={{ minHeight: "100vh", backgroundColor: "var(--dc-bg-editor)", color: "var(--dc-text-main)", overflowY: "auto" }}>
+      {/* Navigation Header */}
+      <header className="dashboard-header" style={{ position: "sticky", top: 0, zIndex: 100 }}>
         <div className="header-left-side">
-          <button className="hamburger-menu-btn" onClick={() => setDrawerOpen(!drawerOpen)} title="Open Course Syllabus">
-            ☰
-          </button>
-          <div className="breadcrumbs-path">
-            <span className="chapter-label">CH {currentChapter.id}</span>
-            <span className="path-arrow">➔</span>
-            <span className="lesson-label">{currentLesson.id}</span>
+          <div className="gateway-logo-block" style={{ margin: 0, gap: "6px" }}>
+            <span className="gateway-logo-icon" style={{ fontSize: "20px", color: "var(--dc-green)" }}>🛤️</span>
+            <span className="gateway-logo-text" style={{ fontSize: "16px" }}>BehindTheSite</span>
           </div>
+          <nav className="header-navigation-tabs" style={{ display: "flex", gap: "16px", marginLeft: "24px" }}>
+            <button className="nav-tab-link active" style={{ background: "none", border: "none", color: "var(--dc-text-bright)", fontWeight: "700", cursor: "pointer", fontSize: "14px" }}>
+              Learn
+            </button>
+            <button className="nav-tab-link" onClick={handleResetProgress} style={{ background: "none", border: "none", color: "var(--dc-text-muted)", cursor: "pointer", fontSize: "14px" }}>
+              Reset Track
+            </button>
+          </nav>
         </div>
 
         <div className="header-right-stats">
-          <div className="stat-pill streak" title="Activity Streak">
+          <div className="stat-pill streak" title="Streak Days">
             🔥 <span className="stat-val">{progress.streak}</span>
           </div>
-          <div className="stat-pill xp" title="Student Experience Points">
+          <div className="stat-pill xp" title="Total XP">
             ⚡ <span className="stat-val">{progress.xp} XP</span>
           </div>
-          <button className="badges-trigger-btn" onClick={() => setShowBadges(!showBadges)}>
-            🏆 {progress.achievements.length}
-          </button>
-
-          <button className="badges-trigger-btn" style={{ borderColor: "rgba(59, 130, 246, 0.4)", color: "#3b82f6" }} title={`Logged in as ${user.email}`}>
-            👤 {user.email.split("@")[0]}
-          </button>
-          <button className="reset-api-btn" onClick={handleLogout} title="Log Out">
-            🚪
+          <button className="badges-trigger-btn" onClick={handleLogout} style={{ color: "var(--dc-red)", borderColor: "rgba(239, 68, 68, 0.3)" }}>
+            Sign Out 🚪
           </button>
         </div>
       </header>
 
-      {/* MOBILE RESPONSIVE TAB BARS */}
-      {isMobile && (
-        <div className="mobile-viewport-tabs">
-          <button 
-            className={`mobile-tab-btn ${activeMobileTab === "instructions" ? "active" : ""}`}
-            onClick={() => setActiveMobileTab("instructions")}
-          >
-            📖 Instructions
-          </button>
-          <button 
-            className={`mobile-tab-btn ${activeMobileTab === "workspace" ? "active" : ""}`}
-            onClick={() => setActiveMobileTab("workspace")}
-          >
-            💻 Workspace & Console
-          </button>
-        </div>
-      )}
+      {/* Main Dashboard Portal Container */}
+      <div className="dashboard-portal-content" style={{ maxWidth: "1200px", margin: "0 auto", padding: "40px 24px", display: "grid", gridTemplateColumns: "1fr", gap: "30px" }}>
+        {/* Responsive Grid Setup for Desktop (Syllabus vs Leaderboard panels) */}
+        <div className="dashboard-grid-layout" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "30px" }}>
+          {/* Apply CSS Grid dynamically on large viewports */}
+          <style dangerouslySetInnerHTML={{__html: `
+            @media (min-width: 992px) {
+              .dashboard-grid-layout {
+                grid-template-columns: 2.2fr 1fr !important;
+              }
+            }
+          `}} />
 
-      {/* FLOATING SYLLABUS OVERLAY DRAWER */}
-      {drawerOpen && (
-        <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)}>
-          <div className="drawer-side-menu" onClick={(e) => e.stopPropagation()}>
-            <div className="drawer-menu-header">
-              <h3>BehindTheSite Syllabus</h3>
-              <button className="drawer-close-btn" onClick={() => setDrawerOpen(false)}>×</button>
+          {/* LEFT AREA: Course Card & expandable roadmaps */}
+          <div className="portal-left-section" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            {/* Active Track Course Card */}
+            <div className="active-track-hero-card" style={{ backgroundColor: "var(--dc-bg-card)", border: "1px solid var(--dc-border)", borderRadius: "8px", padding: "30px", display: "flex", flexDirection: "column", gap: "20px", position: "relative" }}>
+              <div className="hero-card-header">
+                <span style={{ fontSize: "11px", fontWeight: "800", color: "var(--dc-green)", textTransform: "uppercase", letterSpacing: "1px" }}>Track ➔ Python Backend Development</span>
+                <h1 style={{ fontSize: "28px", fontWeight: "800", color: "#ffffff", marginTop: "6px", letterSpacing: "-0.5px" }}>BehindTheSite: Complete Backend Master</h1>
+                <p style={{ color: "var(--dc-text-muted)", fontSize: "14px", marginTop: "8px", lineHeight: "1.5" }}>
+                  Complete 15 Chapters and master the full stack: HTTP REST, environment safety, modular folder systems, routes, JSON assertions, database engines, and CORS controllers.
+                </p>
+              </div>
+
+              {/* Course Progress meters */}
+              <div className="course-progress-block" style={{ borderTop: "1px solid var(--dc-border)", paddingTop: "20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", fontSize: "13.5px" }}>
+                  <span style={{ fontWeight: "700", color: "#ffffff" }}>Course Progress</span>
+                  <span style={{ fontWeight: "800", color: "var(--dc-green)" }}>{completionRate}% Complete ({progress.completedLessons.length}/{totalLessonsCount} lessons)</span>
+                </div>
+                <div className="progress-bar-track" style={{ height: "8px", backgroundColor: "var(--dc-bg-editor)", borderRadius: "999px", overflow: "hidden" }}>
+                  <div className="progress-bar-fill" style={{ width: `${completionRate}%`, height: "100%", backgroundColor: "var(--dc-green)", borderRadius: "999px", transition: "width 0.5s ease" }} />
+                </div>
+              </div>
+
+              {/* Play Button */}
+              <button 
+                onClick={() => setWorkspaceOpen(true)}
+                className="auth-submit-btn" 
+                style={{ alignSelf: "flex-start", padding: "0 24px", height: "46px", marginTop: "10px" }}
+              >
+                ▶ Resume Track
+              </button>
             </div>
-            <div className="drawer-chapters-container">
-              {CHAPTERS.map((chap, cIdx) => {
-                const isCurrentChap = cIdx === activeChapterIndex;
-                return (
-                  <div key={chap.id} className={`drawer-chapter-block ${isCurrentChap ? "active" : ""}`}>
-                    <div className="drawer-chap-info">
-                      <span className="drawer-chap-num">Chapter {chap.id}</span>
-                      <h4>{chap.title}</h4>
+
+            {/* SYLLABUS ROADMAP EXPANDABLE CHAPTERS */}
+            <div className="syllabus-roadmap-block">
+              <h2 style={{ fontSize: "18px", fontWeight: "800", color: "#ffffff", marginBottom: "16px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Syllabus Track Directory</h2>
+              <div className="chapters-accordion-stack" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {CHAPTERS.map((chap, cIdx) => {
+                  const isExpanded = !!expandedChapters[cIdx];
+                  const chapCompletedCount = chap.lessons.filter(l => progress.completedLessons.includes(l.id)).length;
+                  const isChapDone = chapCompletedCount === chap.lessons.length;
+
+                  return (
+                    <div 
+                      key={chap.id} 
+                      className={`chapter-accordion-card ${isExpanded ? "open" : ""}`}
+                      style={{ 
+                        backgroundColor: "var(--dc-bg-card)", 
+                        border: "1px solid var(--dc-border)", 
+                        borderRadius: "8px", 
+                        overflow: "hidden", 
+                        transition: "all 0.2s ease" 
+                      }}
+                    >
+                      {/* Chapter Summary Header Tab */}
+                      <div 
+                        onClick={() => toggleChapter(cIdx)}
+                        className="accordion-header-tab"
+                        style={{ 
+                          padding: "20px", 
+                          display: "flex", 
+                          justifyContent: "space-between", 
+                          alignItems: "center", 
+                          cursor: "pointer", 
+                          backgroundColor: isExpanded ? "rgba(255, 255, 255, 0.02)" : "transparent",
+                          borderBottom: isExpanded ? "1px solid var(--dc-border)" : "none",
+                          transition: "background-color 0.2s"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                          <span style={{ 
+                            width: "28px", 
+                            height: "28px", 
+                            borderRadius: "50%", 
+                            backgroundColor: isChapDone ? "var(--dc-green-glow)" : "var(--dc-bg-editor)", 
+                            border: `1px solid ${isChapDone ? "var(--dc-green)" : "var(--dc-border)"}`,
+                            display: "flex", 
+                            alignItems: "center", 
+                            justifyContent: "center", 
+                            fontSize: "12px", 
+                            fontWeight: "800",
+                            color: isChapDone ? "var(--dc-green)" : "var(--dc-text-muted)"
+                          }}>
+                            {isChapDone ? "✓" : chap.id}
+                          </span>
+                          <div>
+                            <span style={{ fontSize: "11px", fontWeight: "800", color: "var(--dc-text-muted)", textTransform: "uppercase" }}>Chapter {chap.id}</span>
+                            <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#ffffff", marginTop: "2px" }}>{chap.title}</h3>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                          <span style={{ fontSize: "12px", color: "var(--dc-text-muted)", fontWeight: "600" }}>
+                            {chapCompletedCount} / {chap.lessons.length} complete
+                          </span>
+                          <span style={{ 
+                            fontSize: "16px", 
+                            color: "var(--dc-text-muted)", 
+                            transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                            transition: "transform 0.2s"
+                          }}>
+                            ▼
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Expandable Sub-lessons Stack */}
+                      {isExpanded && (
+                        <div className="accordion-body-lessons" style={{ padding: "10px 20px" }}>
+                          {chap.lessons.map((les, lIdx) => {
+                            const isCompleted = progress.completedLessons.includes(les.id);
+                            return (
+                              <div 
+                                key={les.id}
+                                onClick={() => {
+                                  setActiveChapterIndex(cIdx);
+                                  setActiveLessonIndex(lIdx);
+                                  setWorkspaceOpen(true);
+                                }}
+                                className="syllabus-lesson-item"
+                                style={{ 
+                                  padding: "12px 10px", 
+                                  display: "flex", 
+                                  justifyContent: "space-between", 
+                                  alignItems: "center", 
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                  marginTop: "4px",
+                                  marginBottom: "4px"
+                                }}
+                              >
+                                {/* Inject Lesson Hover CSS rules dynamically */}
+                                <style dangerouslySetInnerHTML={{__html: `
+                                  .syllabus-lesson-item:hover {
+                                    background-color: rgba(3, 239, 98, 0.05) !important;
+                                  }
+                                  .syllabus-lesson-item:hover .lesson-launch-indicator {
+                                    opacity: 1 !important;
+                                  }
+                                `}} />
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                  <span style={{ 
+                                    color: isCompleted ? "var(--dc-green)" : "var(--dc-text-muted)", 
+                                    fontWeight: "800",
+                                    fontSize: "14px"
+                                  }}>
+                                    {isCompleted ? "✓" : "○"}
+                                  </span>
+                                  <div>
+                                    <h4 style={{ fontSize: "14px", fontWeight: "700", color: "#ffffff" }}>
+                                      {les.id}. {les.title}
+                                    </h4>
+                                    <span style={{ fontSize: "11px", color: "var(--dc-text-muted)" }}>
+                                      Type: {les.activityType.toUpperCase()} ➔ reward: +{les.xp} XP
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                  <span className="lesson-launch-indicator" style={{ opacity: 0, fontSize: "12px", color: "var(--dc-green)", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.5px", transition: "opacity 0.15s ease" }}>
+                                    ▶ Start
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <div className="drawer-lessons-block">
-                      {chap.lessons.map((les, lIdx) => {
-                        const isCurrentLes = isCurrentChap && lIdx === activeLessonIndex;
-                        const isCompleted = progress.completedLessons.includes(les.id);
-                        return (
-                          <button
-                            key={les.id}
-                            onClick={() => handleLessonSelect(cIdx, lIdx)}
-                            className={`drawer-lesson-button ${isCurrentLes ? "current" : ""} ${isCompleted ? "completed" : ""}`}
-                          >
-                            <span className="lesson-status-bullet">{isCompleted ? "✓" : "○"}</span>
-                            <span className="lesson-id-title">{les.id}. {les.title}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* ACHIEVEMENTS MODAL */}
-      {showBadges && (
-        <div className="badges-drawer-overlay" onClick={() => setShowBadges(false)}>
-          <div className="badges-drawer-content" onClick={(e) => e.stopPropagation()}>
-            <div className="drawer-header">
-              <h3>🏆 Unlocked Badges</h3>
-              <button className="close-btn" onClick={() => setShowBadges(false)}>×</button>
-            </div>
-            <div className="badges-grid">
-              {progress.achievementsList.map((ach) => {
-                const isUnlocked = progress.achievements.includes(ach.id);
-                return (
-                  <div key={ach.id} className={`badge-card ${isUnlocked ? "unlocked" : "locked"}`}>
-                    <div className="badge-icon">{isUnlocked ? ach.icon : "🔒"}</div>
-                    <div className="badge-details">
-                      <h4>{ach.title}</h4>
-                      <p>{ach.desc}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* WORKSPACE LAYOUT */}
-      <div className="workspace-layout">
-        {/* LEFT COLUMN PANEL (Instructions) */}
-        <div className={`workspace-left-instructions-pane ${(!isMobile || activeMobileTab === "instructions") ? "active-tab" : ""}`}>
-          <div className="instructions-scrollable-content">
-            <div className="instructions-section-tag">
-              Section {currentLesson.id.split(".")[0]} ➔ Micro-Lesson {currentLesson.id}
-            </div>
-            <h2 className="lesson-title-heading">{currentLesson.title}</h2>
-
-            <div className="instructions-markdown-body">
-              <p className="concept-paragraph">{currentLesson.concept}</p>
+          {/* RIGHT AREA: Streaks & achievements sidebar */}
+          <div className="portal-right-section" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            {/* Streaks & Stats Dashboard Panel */}
+            <div style={{ backgroundColor: "var(--dc-bg-card)", border: "1px solid var(--dc-border)", borderRadius: "8px", padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              <h3 style={{ fontSize: "14px", fontWeight: "800", color: "#ffffff", borderBottom: "1px solid var(--dc-border)", paddingBottom: "10px", margin: 0 }}>
+                ⚡ STUDENT PROGRESS PROFILE
+              </h3>
               
-              {currentLesson.startingCode && currentLesson.activityType === "code" && (
-                <div className="instructions-code-callout">
-                  <code>python -m bts.service</code>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div style={{ backgroundColor: "var(--dc-bg-editor)", borderRadius: "6px", padding: "14px", border: "1px solid var(--dc-border)", textAlign: "center" }}>
+                  <span style={{ fontSize: "24px" }}>🔥</span>
+                  <h4 style={{ margin: "6px 0 2px 0", fontSize: "18px", fontWeight: "800", color: "var(--dc-amber)" }}>{progress.streak}</h4>
+                  <p style={{ margin: 0, fontSize: "10.5px", color: "var(--dc-text-muted)", textTransform: "uppercase", fontWeight: "700" }}>Day Streak</p>
                 </div>
-              )}
+                <div style={{ backgroundColor: "var(--dc-bg-editor)", borderRadius: "6px", padding: "14px", border: "1px solid var(--dc-border)", textAlign: "center" }}>
+                  <span style={{ fontSize: "24px" }}>⚡</span>
+                  <h4 style={{ margin: "6px 0 2px 0", fontSize: "18px", fontWeight: "800", color: "var(--dc-green)" }}>{progress.xp}</h4>
+                  <p style={{ margin: 0, fontSize: "10.5px", color: "var(--dc-text-muted)", textTransform: "uppercase", fontWeight: "700" }}>Total XP</p>
+                </div>
+              </div>
 
-              <p className="concept-paragraph">{currentLesson.problem}</p>
+              {/* Progress Summary stat blocks */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px", marginTop: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", color: "var(--dc-text-muted)" }}>
+                  <span>Completed chapters:</span>
+                  <span style={{ fontWeight: "700", color: "#ffffff" }}>
+                    {CHAPTERS.filter(c => c.lessons.every(l => progress.completedLessons.includes(l.id))).length} / 15
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", color: "var(--dc-text-muted)" }}>
+                  <span>Active track focus:</span>
+                  <span style={{ fontWeight: "700", color: "var(--dc-green)" }}>Chapter {activeChapterIndex + 1}</span>
+                </div>
+              </div>
             </div>
 
-            <div className="datacamp-instructions-checklist-box">
-              <div className="instructions-box-header">
-                <span className="box-title">INSTRUCTIONS</span>
-              </div>
-              <div className="instructions-box-body">
-                <ul className="instructions-steps-list">
-                  {currentLesson.activityType === "code" && (
-                    <li>
-                      <span className="step-bullet">■</span>
-                      <span>Modify/Build code in <code>main.py</code>. Complete all <code>____</code> placeholders to meet the validations.</span>
-                    </li>
-                  )}
-                  {currentLesson.activityType === "quiz" && (
-                    <li>
-                      <span className="step-bullet">■</span>
-                      <span>Read the question and select the single best option matching professional guidelines.</span>
-                    </li>
-                  )}
-                  {currentLesson.activityType === "sandbox" && (
-                    <li>
-                      <span className="step-bullet">■</span>
-                      <span>Link all modular folder layers on the matchsandbox directory to organize folders correctly.</span>
-                    </li>
-                  )}
-                </ul>
+            {/* Achievements/Medals Sidebar Panel */}
+            <div style={{ backgroundColor: "var(--dc-bg-card)", border: "1px solid var(--dc-border)", borderRadius: "8px", padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              <h3 style={{ fontSize: "14px", fontWeight: "800", color: "#ffffff", borderBottom: "1px solid var(--dc-border)", paddingBottom: "10px", margin: 0 }}>
+                🏆 ACQUIRED TROPHIES ({progress.achievements.length})
+              </h3>
+
+              <div className="achievements-dashboard-grid" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {progress.achievementsList.map((ach) => {
+                  const isUnlocked = progress.achievements.includes(ach.id);
+                  return (
+                    <div 
+                      key={ach.id} 
+                      className={`medal-card ${isUnlocked ? "unlocked" : "locked"}`}
+                      style={{ 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: "12px", 
+                        backgroundColor: isUnlocked ? "rgba(255, 255, 255, 0.01)" : "transparent",
+                        border: `1px solid ${isUnlocked ? "var(--dc-border-hover)" : "rgba(255,255,255,0.03)"}`, 
+                        borderRadius: "6px", 
+                        padding: "10px",
+                        opacity: isUnlocked ? 1 : 0.4
+                      }}
+                    >
+                      <span style={{ fontSize: "20px" }}>{isUnlocked ? ach.icon : "🔒"}</span>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: "13px", fontWeight: "800", color: isUnlocked ? "#ffffff" : "var(--dc-text-muted)" }}>{ach.title}</h4>
+                        <p style={{ margin: "2px 0 0 0", fontSize: "11px", color: "var(--dc-text-muted)", lineHeight: "1.3" }}>{ach.desc}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         </div>
-
-        {/* RIGHT COLUMN PANEL (IDE) */}
-        <div className={`workspace-right-ide-pane ${(!isMobile || activeMobileTab === "workspace") ? "active-tab" : ""}`}>
-          <div className="workspace-right-top-editor">
-            {/* Tab Bar */}
-            <div className="editor-tab-bar">
-              <div className="active-tab-file">
-                <span className="file-icon">📄</span>
-                <span className="file-name">
-                  {currentLesson.activityType === "code" ? "main.py" : currentLesson.activityType === "quiz" ? "Assessment" : "matchsandbox"}
-                </span>
-              </div>
-              <div className="editor-language-tag">
-                <span>{currentLesson.activityType === "code" ? "Python 3" : "Active Exercise"}</span>
-              </div>
-            </div>
-
-            {/* Editor Workspace */}
-            <div className="editor-workspace-content">
-              {/* CODE WORKSPACE */}
-              {currentLesson.activityType === "code" && (
-                <div className="datacamp-textarea-editor">
-                  <div className="editor-line-numbers">
-                    {codeValue.split("\n").map((_, idx) => (
-                      <div key={idx} className="line-num">{idx + 1}</div>
-                    ))}
-                  </div>
-                  <textarea
-                    value={codeValue}
-                    onChange={(e) => setCodeValue(e.target.value)}
-                    spellCheck="false"
-                    className="monospaced-textarea"
-                  />
-                </div>
-              )}
-
-              {/* QUIZ WORKSPACE */}
-              {currentLesson.activityType === "quiz" && (
-                <div className="datacamp-quiz-selection-stack">
-                  <div className="quiz-question-title">
-                    <h3>{currentLesson.question}</h3>
-                  </div>
-                  <div className="quiz-options-list">
-                    {currentLesson.options.map((opt, idx) => {
-                      const isSelected = selectedOption === idx;
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => setSelectedOption(idx)}
-                          className={`quiz-option-row-btn ${isSelected ? "selected" : ""}`}
-                        >
-                          <span className="option-index">{String.fromCharCode(65 + idx)}</span>
-                          <span className="option-text-label">{opt}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* SANDBOX WORKSPACE */}
-              {currentLesson.activityType === "sandbox" && (
-                <FolderSandbox
-                  lesson={currentLesson}
-                  onCompletedChange={(passed, resultText) => {
-                    setSandboxPassed(passed);
-                    setSandboxResult(resultText);
-                  }}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Terminal Console */}
-          <div className="workspace-right-bottom-console">
-            <TerminalConsole 
-              logs={logs} 
-              success={success} 
-              validationTips={validationTips} 
-            />
-          </div>
-
-          {/* INTEGRATED ACTION FOOTER */}
-          <footer className="ide-control-footer">
-            <div className="footer-left-controls">
-              <button className="control-action-btn show-sol" onClick={handleShowSolution} title="Review correct script">
-                🔑 Solution
-              </button>
-              <button className="control-action-btn get-hint" onClick={handleGetHint} title="Costs 10 XP">
-                💡 Hint (-10)
-              </button>
-              <button className="control-action-btn consult-tutor" onClick={handleAskTutor} disabled={loadingTutor}>
-                🤖 {loadingTutor ? "..." : "Ask Tutor"}
-              </button>
-            </div>
-
-            <div className="footer-right-actions">
-              {currentLesson.activityType === "code" && (
-                <button className="action-main-btn run-code-btn" onClick={handleRunCode}>
-                  ▶ Run Code
-                </button>
-              )}
-              
-              {success === true ? (
-                <button className="action-main-btn next-lesson-btn glow" onClick={handleNextLesson}>
-                  Next ➔
-                </button>
-              ) : (
-                <button className="action-main-btn submit-answer-btn" onClick={handleSubmitAnswer}>
-                  🚀 Submit
-                </button>
-              )}
-            </div>
-          </footer>
-        </div>
-
-        {/* AI TUTOR CHAT POPUP */}
-        {tutorMessage && (
-          <div className="floating-ai-tutor-bubble">
-            <div className="floating-tutor-header">
-              <h4>🤖 AI Tutor Feedback</h4>
-              <button onClick={() => setTutorMessage("")} className="floating-tutor-close">×</button>
-            </div>
-            <div className="floating-tutor-body">
-              <p>{tutorMessage}</p>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
