@@ -11,7 +11,10 @@ export const signupUser = async (email, password) => {
   if (error) {
     throw new Error(error.message);
   }
-  return { success: true, user: data.user };
+  
+  // If session is null, email confirmation is active in Supabase dashboard
+  const confirmationRequired = !data.session;
+  return { success: true, user: data.user, session: data.session, confirmationRequired };
 };
 
 export const loginUser = async (email, password) => {

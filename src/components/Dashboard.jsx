@@ -105,13 +105,31 @@ export default function Dashboard() {
         if (gatewayPassword !== gatewayConfirmPassword) {
           throw new Error("Passwords do not match.");
         }
-        await signupUser(gatewayEmail, gatewayPassword);
-        setGatewayMessage({
-          type: "success",
-          text: "Registration complete! You are logged in."
-        });
+        const res = await signupUser(gatewayEmail, gatewayPassword);
+        if (res.confirmationRequired) {
+          setGatewayMessage({
+            type: "success",
+            text: "✉️ VERIFICATION LINK SENT! We have sent a confirmation email to " + gatewayEmail + ". You MUST open your inbox (and check your spam/junk folder) and click the activation link to confirm your account. After clicking the link, click the switch button below to log in!"
+          });
+          setGatewayPassword("");
+          setGatewayConfirmPassword("");
+        } else {
+          setGatewayMessage({
+            type: "success",
+            text: "🎉 Account registered successfully! You are logged in."
+          });
+        }
       } else {
-        await loginUser(gatewayEmail, gatewayPassword);
+        try {
+          await loginUser(gatewayEmail, gatewayPassword);
+        } catch (loginErr) {
+          const errMsg = loginErr.message.toLowerCase();
+          if (errMsg.includes("confirm") || errMsg.includes("verify") || errMsg.includes("active")) {
+            throw new Error("✉️ EMAIL NOT CONFIRMED: The email account " + gatewayEmail + " has not been verified yet. Please search your inbox/spam folder for the Supabase confirmation email, click the link to activate your account, and try again!");
+          } else {
+            throw loginErr;
+          }
+        }
       }
     } catch (err) {
       setGatewayMessage({ type: "error", text: err.message || "An authentication error occurred." });
@@ -259,6 +277,12 @@ export default function Dashboard() {
               <button type="submit" className="auth-submit-btn" disabled={gatewayLoading}>
                 {gatewayLoading ? "Processing..." : gatewayView === "login" ? "Log In" : "Sign Up"}
               </button>
+
+              {gatewayView === "signup" && (
+                <p style={{ fontSize: "11px", color: "var(--dc-text-muted)", lineHeight: "1.4", margin: "8px 0 0 0", textAlign: "center" }}>
+                  ✉️ Note: A verification link will be sent to your email to confirm and activate your account.
+                </p>
+              )}
             </form>
 
             <div className="auth-footer-toggle">
