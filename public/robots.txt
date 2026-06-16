@@ -1,0 +1,9 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Host
+Host: https://behind-the-site.vercel.app
+
+# Sitemap Location
+Sitemap: https://behind-the-site.vercel.app/sitemap.xml
